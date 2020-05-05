@@ -18,3 +18,4 @@ futures = "0.3"
 serde = "1.0"
 thiserror = "1.0.16"
 sha1 = "0.6.0"
+openssl = { version = "0.10", features = ["vendored"] }

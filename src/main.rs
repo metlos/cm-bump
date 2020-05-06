@@ -6,6 +6,7 @@ use kube::{
 use log;
 use pretty_env_logger::formatted_timed_builder;
 use std::env;
+use structopt::StructOpt;
 
 mod operator;
 mod updater;
@@ -13,14 +14,31 @@ mod bumper;
 
 const LOG_ENV_VAR: &str = "CM_LOG";
 
-fn get_env_or_exit(env_var: &str) -> String {
-    match env::var(env_var) {
-        Ok(v) => v,
-        Err(_) => {
-            log::error!("{} environment variable not defined.", env_var);
-            std::process::exit(1);
-        }
-    }
+#[derive(StructOpt, Debug)]
+#[structopt(rename_all = "kebab-case")]
+struct Opts {
+    /// The directory to which persist the files retrieved from config maps.
+    #[structopt(short,long, env = "CM_DIR")]
+    dir: String,
+
+    /// The namespace in which to look for the config maps to persist.
+    #[structopt(short,long, env = "CM_NAMESPACE")]
+    namespace: String,
+
+    /// An expression to match the labels against. Consult the Kubernetes documentation for the
+    /// syntax required.
+    #[structopt(short,long, env = "CM_LABELS")]
+    labels: String,
+
+    /// The name of the executable that is going to be sent a signal when a change in configuration files is detected.
+    /// If there are more processes running, one is picked at random.
+    #[structopt(short,long, env = "CM_PROC_COMM")]
+    process_command: Option<String>,
+
+    /// The name of the signal to send to the process on the configuration files change.
+    /// Use `kill -l` to get a list of possible signals and prepend it with "SIG". E.g. "SIGHUP", "SIGKILL", etc.
+    #[structopt(short,long, env = "CM_PROC_SIGNAL")]
+    signal: Option<String>,
 }
 
 #[tokio::main]
@@ -34,25 +52,21 @@ async fn main() -> anyhow::Result<()> {
         .parse_filters(&env::var(LOG_ENV_VAR).unwrap_or("info,kube=warn".into()))
         .init();
 
+    let opt: Opts = StructOpt::from_args();
+
     log::info!("cm-bump starting");
 
-    let dir = get_env_or_exit("CM_DIR");
-    let ns = get_env_or_exit("CM_NAMESPACE");
-    let labels = get_env_or_exit("CM_LABELS");
-    let proc_command = env::var("CM_PROC_COMM").ok();
-    let signal = env::var("CM_PROC_SIGNAL").ok();
-
     let client = Client::try_default().await?;
-    let cms: Api<ConfigMap> = Api::namespaced(client, &ns);
-    let lp = ListParams::default().labels(&labels);
+    let cms: Api<ConfigMap> = Api::namespaced(client, &opt.namespace);
+    let lp = ListParams::default().labels(&opt.labels);
 
-    let bumper = if proc_command.is_some() && signal.is_some() {
-        Some(bumper::Bumper::new(&proc_command.unwrap(), &signal.unwrap())?)
+    let bumper = if opt.process_command.is_some() && opt.signal.is_some() {
+        Some(bumper::Bumper::new(&opt.process_command.unwrap(), &opt.signal.unwrap())?)
     } else {
         None
     };
 
-    let op = match updater::ConfigUpdater::new(&dir, bumper) {
+    let op = match updater::ConfigUpdater::new(&opt.dir, bumper) {
         Ok(cu) => cu,
         Err(e) => {
             log::error!("{}", e);

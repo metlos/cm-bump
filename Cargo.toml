@@ -3,6 +3,7 @@ name = "cm-bump"
 version = "0.1.0"
 authors = ["Lukas Krejci <lkrejci@redhat.com>"]
 edition = "2018"
+description = "A tool that is meant to be used as a sidecar in a Kubernetes Pod. It can read specifically labeled config maps and persist the files from them into a specified directory. It can also send a signal to some process when the files change."
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -17,6 +18,7 @@ tokio = { version = "0.2.17", features = ["full"] }
 futures = "0.3"
 serde = "1.0"
 thiserror = "1.0.16"
-sha1 = "0.6.0"
+sha1 = "0.6"
 openssl = { version = "0.10", features = ["vendored"] }
-nix = "0.17.0"
+nix = "0.17"
+structopt = "0.3"

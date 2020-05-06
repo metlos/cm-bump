@@ -9,6 +9,7 @@ use std::env;
 
 mod operator;
 mod updater;
+mod bumper;
 
 const LOG_ENV_VAR: &str = "CM_LOG";
 
@@ -21,7 +22,6 @@ fn get_env_or_exit(env_var: &str) -> String {
         }
     }
 }
-
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -39,12 +39,20 @@ async fn main() -> anyhow::Result<()> {
     let dir = get_env_or_exit("CM_DIR");
     let ns = get_env_or_exit("CM_NAMESPACE");
     let labels = get_env_or_exit("CM_LABELS");
+    let proc_command = env::var("CM_PROC_COMM").ok();
+    let signal = env::var("CM_PROC_SIGNAL").ok();
 
     let client = Client::try_default().await?;
     let cms: Api<ConfigMap> = Api::namespaced(client, &ns);
     let lp = ListParams::default().labels(&labels);
 
-    let op = match updater::ConfigUpdater::new(&dir) {
+    let bumper = if proc_command.is_some() && signal.is_some() {
+        Some(bumper::Bumper::new(&proc_command.unwrap(), &signal.unwrap())?)
+    } else {
+        None
+    };
+
+    let op = match updater::ConfigUpdater::new(&dir, bumper) {
         Ok(cu) => cu,
         Err(e) => {
             log::error!("{}", e);

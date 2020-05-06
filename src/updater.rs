@@ -1,3 +1,4 @@
+use super::bumper::Bumper;
 use super::operator;
 use k8s_openapi::api::core::v1::ConfigMap;
 use std::collections::BTreeMap;
@@ -5,6 +6,7 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone)]
 pub struct ConfigUpdater {
     dir: String,
+    bumper: Option<Bumper>,
 }
 
 #[derive(Debug, Clone)]
@@ -16,7 +18,7 @@ pub struct ConfigFile {
 type ConfigFiles = BTreeMap<String, ConfigFile>;
 
 impl ConfigUpdater {
-    pub fn new(base_dir: &str) -> Result<Self, operator::Error> {
+    pub fn new(base_dir: &str, bumper: Option<Bumper>) -> Result<Self, operator::Error> {
         let base_dir = std::path::PathBuf::from(base_dir);
         let base_path = base_dir.to_string_lossy().to_string();
         let metadata = std::fs::metadata(base_dir.clone()).map_err(|e| {
@@ -33,7 +35,10 @@ impl ConfigUpdater {
             )))
         } else {
             match base_dir.to_str() {
-                Some(p) => Ok(ConfigUpdater { dir: p.to_owned() }),
+                Some(p) => Ok(ConfigUpdater {
+                    dir: p.to_owned(),
+                    bumper: bumper,
+                }),
                 None => Err(operator::Error::OperatorError(format!(
                     "Base dir path `{}` is not valid UTF-8.",
                     base_path
@@ -112,6 +117,7 @@ impl operator::Operator<ConfigMap, ConfigFiles> for ConfigUpdater {
             let mut sha = sha1::Sha1::new();
 
             // now let's create or update all the files that should be there according to the new config
+            let mut updated = false;
             for (name, cfg) in new_files {
                 let path = self.to_path(name);
                 if path.exists() {
@@ -137,10 +143,18 @@ impl operator::Operator<ConfigMap, ConfigFiles> for ConfigUpdater {
                 match std::fs::write(path, cfg.content.as_bytes()) {
                     Ok(_) => {
                         log::debug!("Updated the config file `{}`", name);
+                        updated = true;
                     }
                     Err(e) => {
                         log::error!("Failed to update the config file `{}`: {}", name, e);
                     }
+                }
+            }
+
+            if updated {
+                if let Some(ref mut b) = self.bumper {
+                    b.bump()
+                        .map_err(|e| operator::Error::OperatorError(format!("{}", e)))?;
                 }
             }
         }

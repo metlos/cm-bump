@@ -30,9 +30,8 @@ struct Opts {
     #[structopt(short,long, env = "CM_LABELS")]
     labels: String,
 
-    /// The name of the executable that is going to be sent a signal when a change in configuration files is detected.
-    /// If there are more processes running, one is picked at random.
-    #[structopt(short,long, env = "CM_PROC_COMM")]
+    /// The commandline by which to identify the process to send the signal to. This can be regular expression.
+    #[structopt(short,long, env = "CM_PROC_CMD")]
     process_command: Option<String>,
 
     /// The name of the signal to send to the process on the configuration files change.
@@ -63,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
     let bumper = if opt.process_command.is_some() && opt.signal.is_some() {
         let comm = opt.process_command.unwrap();
         let signal = opt.signal.unwrap();
-        log::info!("Bumper will look for processes called {} and send {} to it on config change.", comm, signal);
+        log::info!("Bumper will look for processes matching `{}` and send `{}` to it on config change.", comm, signal);
         Some(bumper::Bumper::new(&comm, &signal)?)
     } else {
         log::info!("Bumper not configured.");

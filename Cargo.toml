@@ -22,3 +22,4 @@ sha1 = "0.6"
 openssl = { version = "0.10", features = ["vendored"] }
 nix = "0.17"
 structopt = "0.3"
+regex = "1"

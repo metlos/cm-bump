@@ -60,8 +60,8 @@ spec:
       valueFrom:
         fieldRef:
           fieldPath: metadata.namespace
-    - name: CM_PROC_COMM
-      value: signal-handler
+    - name: CM_PROC_CMD
+      value: signal-hand.*
     - name: CM_PROC_SIGNAL
       value: SIGHUP
       #    - name: CM_LOG

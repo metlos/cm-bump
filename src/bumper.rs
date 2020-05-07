@@ -4,6 +4,7 @@ use thiserror::Error;
 use nix::unistd::Pid;
 use nix::sys::signal::{self, Signal};
 use std::str::FromStr;
+use regex::Regex;
 use log;
 
 #[derive(Debug, Clone, Error)]
@@ -22,15 +23,15 @@ type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Clone)]
 pub struct Bumper {
-    proc_comm: String,
+    proc_cmd: Regex,
     signal: Signal,
     pid: Option<Pid>,
 }
 
 impl Bumper {
-    pub fn new(proc_comm: &str, signal: &str) -> Result<Self> {
+    pub fn new(proc_cmd: &str, signal: &str) -> Result<Self> {
         Ok(Bumper {
-            proc_comm: proc_comm.to_owned(),
+            proc_cmd: Regex::from_str(proc_cmd).map_err(|e| Error::InitError(format!("{}", e)))?,
             signal: Signal::from_str(signal).map_err(|e| Error::InitError(format!("{}", e)))?,
             pid: None,
         })
@@ -40,14 +41,14 @@ impl Bumper {
         match self.pid {
             Some(pid) => {
                 // make sure the pid is still for the process we want
-                let comm = trimmed_contents(format!("/proc/{}/comm", pid))?;
-                if comm != self.proc_comm {
-                    self.pid = scan_proc(&self.proc_comm)?;
+                let comm = trimmed_contents(format!("/proc/{}/cmdline", pid))?;
+                if !self.proc_cmd.is_match(&comm) {
+                    self.pid = scan_proc(&self.proc_cmd)?;
                     log::debug!("Process restarted. New PID is {:?}", self.pid);
                 }
             }
             None => {
-                self.pid = scan_proc(&self.proc_comm)?;
+                self.pid = scan_proc(&self.proc_cmd)?;
                 log::debug!("Process PID determined to be {:?}", self.pid);
             }
         }
@@ -71,7 +72,7 @@ impl Bumper {
     }
 }
 
-fn scan_proc(proc_comm: &str) -> Result<Option<Pid>> {
+fn scan_proc(proc_cmd: &Regex) -> Result<Option<Pid>> {
     std::fs::read_dir("/proc")
         .map_err(|e| proc_error(&e))?
         .map(|e| {
@@ -91,12 +92,12 @@ fn scan_proc(proc_comm: &str) -> Result<Option<Pid>> {
         .map(|e| {
             // now see if the comm of the process is what we're looking for
             let mut comm_path = e.path();
-            comm_path.push("comm");
+            comm_path.push("cmdline");
             let comm = trimmed_contents(comm_path)?;
             
-            log::trace!("Checking `{}` with command `{}`", e.file_name().to_string_lossy(), comm);
+            log::trace!("Checking `{}` with cmdline `{}`", e.file_name().to_string_lossy(), comm);
 
-            if &comm == proc_comm {
+            if proc_cmd.is_match(&comm) {
                 log::trace!("Matched {}.", comm);
                 e.file_name()
                     .to_str()

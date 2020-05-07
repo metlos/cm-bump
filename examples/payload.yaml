@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cm
+  labels:
+    config-bump: reload
+data:
+  data.yaml: |
+    key: value2
+

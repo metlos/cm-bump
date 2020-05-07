@@ -1,8 +1,10 @@
 use std::fs;
+use std::path::Path;
 use thiserror::Error;
 use nix::unistd::Pid;
 use nix::sys::signal::{self, Signal};
 use std::str::FromStr;
+use log;
 
 #[derive(Debug, Clone, Error)]
 pub enum Error {
@@ -38,13 +40,15 @@ impl Bumper {
         match self.pid {
             Some(pid) => {
                 // make sure the pid is still for the process we want
-                let comm = fs::read_to_string(format!("/proc/{}/comm", pid)).map_err(|e| proc_error(&e))?;
+                let comm = trimmed_contents(format!("/proc/{}/comm", pid))?;
                 if comm != self.proc_comm {
                     self.pid = scan_proc(&self.proc_comm)?;
+                    log::debug!("Process restarted. New PID is {:?}", self.pid);
                 }
             }
             None => {
                 self.pid = scan_proc(&self.proc_comm)?;
+                log::debug!("Process PID determined to be {:?}", self.pid);
             }
         }
 
@@ -56,9 +60,13 @@ impl Bumper {
 
         match self.pid {
             Some(pid) => {
+                log::debug!("Sending signal {:?} to process {:?}", self.signal, self.pid);
                 signal::kill(pid, self.signal).map_err(|e| Error::SignalError(format!("{}", e)))
             },
-            _ => Ok(())
+            _ => {
+                log::info!("No process of the configured name found running. Bump has no effect.");
+                Ok(())
+            }
         }
     }
 }
@@ -66,6 +74,10 @@ impl Bumper {
 fn scan_proc(proc_comm: &str) -> Result<Option<Pid>> {
     std::fs::read_dir("/proc")
         .map_err(|e| proc_error(&e))?
+        .map(|e| {
+            log::trace!("Inspecting {:?}", e);
+            e
+        })
         .filter_map(|r| r.ok())
         .filter(|e| {
             // check if the directory can be parsed as a number - that would be a pid of a process
@@ -80,9 +92,12 @@ fn scan_proc(proc_comm: &str) -> Result<Option<Pid>> {
             // now see if the comm of the process is what we're looking for
             let mut comm_path = e.path();
             comm_path.push("comm");
-            let comm = fs::read_to_string(comm_path).map_err(|e| proc_error(&e))?;
+            let comm = trimmed_contents(comm_path)?;
+            
+            log::trace!("Checking `{}` with command `{}`", e.file_name().to_string_lossy(), comm);
 
             if &comm == proc_comm {
+                log::trace!("Matched {}.", comm);
                 e.file_name()
                     .to_str()
                     .map(|f| {
@@ -92,7 +107,15 @@ fn scan_proc(proc_comm: &str) -> Result<Option<Pid>> {
                     })
                     .unwrap_or(Ok(None))
             } else {
+                log::trace!("{} doesn't match.", comm);
                 Ok(None)
+            }
+        })
+        .filter(|r| {
+            if let Ok(Some(_)) = r {
+                true
+            } else {
+                false
             }
         })
         .next()
@@ -101,4 +124,9 @@ fn scan_proc(proc_comm: &str) -> Result<Option<Pid>> {
 
 fn proc_error(e: &dyn ToString) -> Error {
     Error::ProcError(e.to_string())
+}
+
+fn trimmed_contents<P: AsRef<Path>>(e: P) -> Result<String> {
+    let ret = fs::read_to_string(e).map_err(|e| proc_error(&e))?.trim().to_string();
+    Ok(ret)
 }

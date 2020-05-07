@@ -93,31 +93,36 @@ impl operator::Operator<ConfigMap, ConfigFiles> for ConfigUpdater {
         old: Option<&ConfigFiles>,
         new: Option<&ConfigFiles>,
     ) -> Result<(), operator::Error> {
-        if let Some(new_files) = new {
-            // first let's delete all the files from old that are not in new
-            if let Some(old_files) = old {
-                for f in old_files.keys() {
-                    if !new_files.contains_key(f) {
-                        let path = self.to_path(f);
-                        log::debug!("Deleting config file {:?}", path);
-                        match std::fs::remove_file(path) {
-                            Err(e) => {
-                                log::error!(
-                                    "Failed to delete a no longer required config file `{}`: {}",
-                                    f,
-                                    e
-                                );
-                            }
-                            _ => {}
+        log::debug!("Reconciling {:?} with {:?}", old, new);
+        let mut updated = false;
+
+        // first let's delete all the files from old that are not in new
+        if let Some(old_files) = old {
+            let empty = ConfigFiles::new();
+            for f in old_files.keys() {
+                if !new.unwrap_or(&empty).contains_key(f) {
+                    let path = self.to_path(f);
+                    log::debug!("Deleting config file {:?}", path);
+                    match std::fs::remove_file(path) {
+                        Err(e) => {
+                            log::error!(
+                                "Failed to delete a no longer required config file `{}`: {}",
+                                f,
+                                e
+                            );
+                        }
+                        _ => {
+                            updated = true;
                         }
                     }
                 }
             }
+        }
 
+        if let Some(new_files) = new {
             let mut sha = sha1::Sha1::new();
 
             // now let's create or update all the files that should be there according to the new config
-            let mut updated = false;
             for (name, cfg) in new_files {
                 let path = self.to_path(name);
                 if path.exists() {
@@ -150,14 +155,19 @@ impl operator::Operator<ConfigMap, ConfigFiles> for ConfigUpdater {
                     }
                 }
             }
-
-            if updated {
-                if let Some(ref mut b) = self.bumper {
-                    b.bump()
-                        .map_err(|e| operator::Error::OperatorError(format!("{}", e)))?;
-                }
-            }
         }
+
+        if updated {
+            log::debug!("Updates to the config files applied.");
+            if let Some(ref mut b) = self.bumper {
+                log::debug!("Bumping the configured process.");
+                b.bump()
+                    .map_err(|e| operator::Error::OperatorError(format!("{}", e)))?;
+            }
+        } else {
+            log::debug!("No changes to config files found.");
+        }
+
         Ok(())
     }
 }

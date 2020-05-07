@@ -61,8 +61,12 @@ async fn main() -> anyhow::Result<()> {
     let lp = ListParams::default().labels(&opt.labels);
 
     let bumper = if opt.process_command.is_some() && opt.signal.is_some() {
-        Some(bumper::Bumper::new(&opt.process_command.unwrap(), &opt.signal.unwrap())?)
+        let comm = opt.process_command.unwrap();
+        let signal = opt.signal.unwrap();
+        log::info!("Bumper will look for processes called {} and send {} to it on config change.", comm, signal);
+        Some(bumper::Bumper::new(&comm, &signal)?)
     } else {
+        log::info!("Bumper not configured.");
         None
     };
 

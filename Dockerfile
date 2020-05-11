@@ -19,5 +19,4 @@ RUN cargo install --target x86_64-unknown-linux-musl --path .
 # Copy the statically-linked binary into a scratch container.
 FROM scratch
 COPY --from=build /root/.cargo/bin/cm-bump .
-USER 1000
 CMD ["./cm-bump"]

@@ -2,11 +2,13 @@ use k8s_openapi::api::core::v1::ConfigMap;
 use kube::{
     api::{Api, ListParams},
     Client,
+    config::Config,
 };
 use log;
 use pretty_env_logger::formatted_timed_builder;
 use std::env;
 use structopt::StructOpt;
+use core::convert::TryFrom;
 
 mod operator;
 mod updater;
@@ -24,6 +26,10 @@ struct Opts {
     /// The namespace in which to look for the config maps to persist.
     #[structopt(short,long, env = "CM_NAMESPACE")]
     namespace: String,
+
+    /// Whether to require valid certificate chain. True by default.
+    #[structopt(short,long, env = "CM_TLS_VERIFY")]
+    tls_verify: Option<bool>,
 
     /// An expression to match the labels against. Consult the Kubernetes documentation for the
     /// syntax required.
@@ -55,7 +61,10 @@ async fn main() -> anyhow::Result<()> {
 
     log::info!("cm-bump starting");
 
-    let client = Client::try_default().await?;
+    let mut client_config = Config::infer().await?;
+    client_config.accept_invalid_certs = !opt.tls_verify.unwrap_or(true);
+
+    let client = Client::try_from(client_config)?;
     let cms: Api<ConfigMap> = Api::namespaced(client, &opt.namespace);
     let lp = ListParams::default().labels(&opt.labels);
 

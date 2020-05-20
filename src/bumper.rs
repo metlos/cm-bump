@@ -203,6 +203,7 @@ impl Bumper {
 
         let process_tree = process_tree
             .iter()
+            .skip(1)
             .fold(first, |detector, detection| ProcessDetector {
                 detection: detection.clone(),
                 pid: None,
